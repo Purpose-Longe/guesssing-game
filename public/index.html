@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Guessing Game (Modular + Auth)</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app" class="card">
+    <div id="lobby">
+      <h2>Lobby</h2>
+      <div>
+        <input id="username" placeholder="Your name" maxlength="24" />
+        <input id="roomIdInput" placeholder="Room ID (optional)" />
+        <label><input id="publicRoom" type="checkbox" checked /> Public room</label>
+        <input id="durationInput" placeholder="Round duration (secs)" type="number" min="10" />
+        <input id="pointsInput" placeholder="Points for correct guess" type="number" min="1" />
+        <button id="createBtn">Create</button>
+        <button id="refreshRooms">Refresh rooms</button>
+      </div>
+      <div id="authBox">
+        <h3>Account (optional)</h3>
+        <input id="authUser" placeholder="username" />
+        <input id="authPass" placeholder="password" type="password" />
+        <button id="registerBtn">Register</button>
+        <button id="loginBtn">Login</button>
+        <button id="logoutBtn">Logout</button>
+        <div id="authStatus"></div>
+      </div>
+      <h3>Public rooms</h3>
+      <ul id="roomsList"></ul>
+    </div>
+
+    <div id="game" class="hidden">
+      <header>
+        <strong id="roomLabel"></strong>
+        <span id="playerCount"></span>
+      </header>
+
+      <div id="mainArea">
+        <section id="chat">
+          <div id="messages"></div>
+          <form id="msgForm"><input id="msgInput" placeholder="Send chat..." /><button>Send</button></form>
+        </section>
+
+        <aside>
+          <div id="playersBox"><h3>Players</h3><ul id="playersList"></ul></div>
+          <div id="controls">
+            <div id="masterControls" class="hidden">
+              <h4>You're the Game Master</h4>
+              <input id="questionInput" placeholder="Question (visible)" />
+              <input id="answerInput" placeholder="Answer (hidden)" />
+              <button id="setQBtn">Set Question</button>
+              <input id="startDuration" placeholder="Duration override (secs)" type="number" />
+              <button id="startBtn">Start Game</button>
+            </div>
+
+            <div id="guessControls" class="hidden">
+              <div id="questionBox"></div>
+              <form id="guessForm"><input id="guessInput" placeholder="Your guess" /><button>Guess</button></form>
+              <div id="timer"></div>
+            </div>
+
+            <div>
+              <h4>Private message</h4>
+              <select id="pmSelect"></select>
+              <input id="pmText" placeholder="Message..." />
+              <button id="pmSend">Send PM</button>
+            </div>
+
+            <button id="leaveBtn">Leave</button>
+            <button id="showLeaderboard">Leaderboard</button>
+            <div id="leaderboard" class="hidden"><ol id="leaderboardList"></ol></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/client.js"></script>
+</body>
+</html>
