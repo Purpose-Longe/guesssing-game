@@ -83,9 +83,21 @@ export function Chat({ sessionId, currentPlayer }: ChatProps) {
         ))}
       </div>
 
-      <form onSubmit={handleSend} className="flex gap-2">
-        <input value={text} onChange={(e) => setText(e.target.value)} className="flex-1 px-3 py-2 border rounded" placeholder="Type a message..." />
-        <button type="submit" className="px-3 py-2 bg-blue-600 text-white rounded">Send</button>
+      <form onSubmit={handleSend} className="flex gap-2 items-center w-full">
+        {/* allow the input to shrink on small screens */}
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="flex-1 min-w-0 px-3 py-2 border rounded"
+          placeholder="Type a message..."
+        />
+        {/* keep the button from growing/shrinking and give it a small min width */}
+        <button
+          type="submit"
+          className="flex-none px-3 py-2 bg-blue-600 text-white rounded min-w-[56px]"
+        >
+          Send
+        </button>
       </form>
     </div>
   );

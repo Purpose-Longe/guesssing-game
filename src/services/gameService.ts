@@ -83,10 +83,7 @@ export async function getSessionPlayers(sessionId: string): Promise<Player[]> {
   return data || [];
 }
 
-export async function startGame(sessionId: string, question: string, answer: string): Promise<void> {
-  const gameStartedAt = new Date().toISOString();
-  const gameEndsAt = new Date(Date.now() + 60000).toISOString();
-
+export async function startGame(sessionId: string, question: string, answer: string, durationSeconds: number = 60): Promise<void> {
   // remove previous attempts from past rounds so this round starts clean
   const delResp = await fetch(`${SERVER_URL}/api/attempts/${sessionId}`, { method: 'DELETE' });
   const delResult = await delResp.json();
@@ -96,8 +93,7 @@ export async function startGame(sessionId: string, question: string, answer: str
     status: 'in_progress',
     current_question: question,
     current_answer: answer.toLowerCase().trim(),
-    game_started_at: gameStartedAt,
-    game_ends_at: gameEndsAt
+    duration: durationSeconds
   }) });
   const result = await resp.json();
   if (!result) throw new Error('Failed to start game');

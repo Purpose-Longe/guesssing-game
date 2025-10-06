@@ -18,7 +18,7 @@ export function GameLobby({ session, currentPlayer, players, onStartGame, onLeav
   const [copied, setCopied] = useState(false);
 
   const isGameMaster = currentPlayer.id === session.game_master_id;
-  const canStartGame = players.length >= 2;
+  const canStartGame = players.length >= 3;
 
   const handleCopyCode = async () => {
     await navigator.clipboard.writeText(session.code);
@@ -41,7 +41,7 @@ export function GameLobby({ session, currentPlayer, players, onStartGame, onLeav
     }
 
     if (!canStartGame) {
-      setError('Need at least 2 players to start');
+      setError('Need at least 3 players to start');
       return;
     }
 
@@ -163,7 +163,7 @@ export function GameLobby({ session, currentPlayer, players, onStartGame, onLeav
 
               {!canStartGame && (
                 <div className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-lg text-sm">
-                  Waiting for at least 2 players to start the game...
+                  Waiting for at least 3 players to start the game...
                 </div>
               )}
 
@@ -189,7 +189,7 @@ export function GameLobby({ session, currentPlayer, players, onStartGame, onLeav
             </p>
             {!canStartGame && (
               <p className="text-sm text-orange-600 mt-2">
-                Need at least 2 players to start
+                Need at least 3 players to start
               </p>
             )}
           </div>

@@ -9,6 +9,8 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Respond to CORS preflight requests for all routes
+app.options('*', cors());
 
 const distPath = path.join(__dirname, "..", "dist");
 if (fs.existsSync(distPath)) {
@@ -446,17 +448,32 @@ app.put("/api/sessions/:id", async (req, res) => {
     body.current_question &&
     body.current_answer
   ) {
-    // insert round and set current_round_id
+    // enforce minimum players on the server to match frontend (require 3 active players)
+    const pc = await pool.query(
+      "SELECT count(*)::int AS c FROM players WHERE session_id=$1 AND is_active",
+      [id]
+    );
+    const playerCount = pc.rows[0] ? pc.rows[0].c : 0;
+    if (playerCount < 3) {
+      return res
+        .status(400)
+        .json({ error: "At least 3 active players are required to start the game" });
+    }
+    // compute server-side timing
+    const durationSeconds = typeof body.duration === 'number' && body.duration > 0 ? body.duration : 60;
+    // insert round and set current_round_id; use now() for started_at and now() + duration for ends_at
     const insert = await pool.query(
-      "INSERT INTO rounds (session_id, question, answer_normalized, started_at, ends_at) VALUES ($1,$2,$3,now(),$4) RETURNING id",
+      "INSERT INTO rounds (session_id, question, answer_normalized, started_at, ends_at) VALUES ($1,$2,$3,now(), now() + COALESCE($4, '0 seconds')::interval) RETURNING id, started_at, ends_at",
       [
         id,
         body.current_question,
         body.current_answer,
-        body.game_ends_at || null,
+        `${durationSeconds} seconds`,
       ]
     );
     const roundId = insert.rows[0].id;
+    const startedAt = insert.rows[0].started_at;
+    const endsAt = insert.rows[0].ends_at;
     await pool.query(
       "UPDATE sessions SET status=$1, current_round_id=$2, updated_at=now() WHERE id=$3",
       ["in_progress", roundId, id]
@@ -465,16 +482,32 @@ app.put("/api/sessions/:id", async (req, res) => {
       id,
     ]);
     const updated = rows[0];
-    // include current question/answer and timing info in the session payload so clients see the question
-    if (body.current_question) updated.current_question = body.current_question;
-    if (body.current_answer) updated.current_answer = body.current_answer;
-    if (body.game_started_at) updated.game_started_at = body.game_started_at;
-    if (body.game_ends_at) updated.game_ends_at = body.game_ends_at;
+    // include current question/answer and server timing info in the session payload
+    updated.current_question = body.current_question;
+    updated.current_answer = body.current_answer;
+    updated.game_started_at = startedAt;
+    updated.game_ends_at = endsAt;
     sendEvent(`session-${id}`, "session_update", updated);
     return res.json(updated);
   }
 
   // generic update
+  // Prevent clients from setting server-managed timing/round fields directly.
+  // Enforce that starting a game (status === 'in_progress') must go through the start-game path above.
+  if (body.status === 'in_progress') {
+    return res.status(400).json({ error: "To start a round, provide current_question, current_answer and duration (use the start game flow)" });
+  }
+
+  // Drop any server-managed fields which must not be set by clients
+  delete body.game_started_at;
+  delete body.game_ends_at;
+  delete body.current_round_id;
+  delete body.current_question;
+  delete body.current_answer;
+  delete body.created_at;
+  delete body.updated_at;
+  delete body.code;
+
   const keys = Object.keys(body);
   const sets = keys.map((k, idx) => `${k}=$${idx + 1}`).join(", ");
   const vals = keys.map((k) => body[k]);
