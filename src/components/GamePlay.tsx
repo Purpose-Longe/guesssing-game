@@ -139,7 +139,7 @@ export function GamePlay({
         </div>
 
         <div className="col-span-1 h-full">
-          <Chat sessionId={session.id} currentPlayer={currentPlayer} />
+          <Chat sessionId={session.id} currentPlayer={currentPlayer} players={players} />
         </div>
 
         {gameOver ? (

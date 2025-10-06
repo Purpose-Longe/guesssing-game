@@ -26,7 +26,9 @@ RUN npm ci --only=production --silent || npm install --only=production --silent
 COPY --from=builder /app/dist ./dist
 # Copy server code
 COPY server ./server
+# Copy migrations so runtime can run them
+COPY db/migrations ./db/migrations
 # Expose port
 EXPOSE 80
-# Start server
-CMD ["node", "server/index.js"]
+# Start server (run migrations then start)
+CMD ["npm", "start"]

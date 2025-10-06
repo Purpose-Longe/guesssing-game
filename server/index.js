@@ -74,6 +74,8 @@ async function ensureSchema() {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       code varchar(16) NOT NULL UNIQUE,
       game_master_id uuid NULL,
+      game_started_at timestamptz NULL,
+      game_ends_at timestamptz NULL,
       status text NOT NULL DEFAULT 'waiting',
       current_round_id uuid NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
@@ -193,12 +195,15 @@ app.post("/api/messages", async (req, res) => {
   );
   if (dup.rows[0]) {
     const r = dup.rows[0];
+    // try to fetch username for nicer payload
+    const u = await pool.query('SELECT username FROM players WHERE id=$1', [r.player_id]);
     const outDup = {
       id: r.id,
       session_id: r.session_id,
       player_id: r.player_id,
       content: r.content,
       created_at: r.created_at,
+      players: u.rows[0] ? { username: u.rows[0].username } : undefined,
     };
     sendEvent(`messages-session-${session_id}`, "message", outDup);
     return res.json(outDup);
@@ -209,7 +214,9 @@ app.post("/api/messages", async (req, res) => {
     [session_id, player_id, content, now]
   );
   const row = insert.rows[0];
-  const out = { ...row };
+  // attach username if available
+  const u2 = await pool.query('SELECT username FROM players WHERE id=$1', [row.player_id]);
+  const out = { ...row, players: u2.rows[0] ? { username: u2.rows[0].username } : undefined };
   sendEvent(`messages-session-${session_id}`, "message", out);
   res.json(out);
 });
@@ -294,8 +301,8 @@ app.post("/api/submit_guess", async (req, res) => {
         [player_id, round.id]
       );
       await client.query(
-        "UPDATE sessions SET status=$1, current_round_id=$2, updated_at=now() WHERE id=$3",
-        ["waiting", null, session_id]
+        "UPDATE sessions SET status=$1, current_round_id=$2, game_master_id=$3, updated_at=now() WHERE id=$4",
+        ["waiting", null, player_id, session_id]
       );
       game_over = true;
     }
@@ -362,14 +369,20 @@ app.post("/api/end_round", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // mark round ended and optionally award points
     await client.query(
-      "UPDATE sessions SET status=$1, current_round_id=$2, updated_at=now() WHERE id=$3",
-      ["ended", null, session_id]
+      "UPDATE sessions SET status=$1, current_round_id=$2, game_ends_at=$3, updated_at=now() WHERE id=$4",
+      ["ended", null, null, session_id]
     );
     if (winner_id) {
       await client.query("UPDATE players SET score = score + 10 WHERE id=$1", [
         winner_id,
       ]);
+      // transfer game master to winner
+      await client.query(
+        "UPDATE sessions SET game_master_id=$1, updated_at=now() WHERE id=$2",
+        [winner_id, session_id]
+      );
     }
     await client.query("COMMIT");
     const sessionUpdated = await pool.query(

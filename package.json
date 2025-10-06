@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "migrate": "node ./server/runMigrations.js"
+    "migrate": "node ./server/runMigrations.js",
+  "start": "node ./server/runMigrations.js && node ./server/index.js",
+    "docker:build": "docker build -t guessing-game ."
   },
   "dependencies": {
     "dotenv": "^17.2.3",

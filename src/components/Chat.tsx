@@ -7,9 +7,10 @@ import type { Player } from '../services/gameService';
 interface ChatProps {
   sessionId: string;
   currentPlayer: Player;
+  players?: Player[];
 }
 
-export function Chat({ sessionId, currentPlayer }: ChatProps) {
+export function Chat({ sessionId, currentPlayer, players = [] }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -74,9 +75,13 @@ export function Chat({ sessionId, currentPlayer }: ChatProps) {
   return (
     <div className="bg-white rounded-lg p-4 h-full flex flex-col">
       <div ref={listRef} className="flex-1 overflow-auto space-y-2 mb-3">
-        {messages.map((m) => (
-          <div key={m.id} className={`p-2 rounded max-w-[80%] ${m.player_id === currentPlayer.id ? 'bg-blue-100 self-end ml-auto' : 'bg-gray-100'}`}>
-            <div className="text-sm font-semibold">{m.player_id === currentPlayer.id ? 'You' : m.players?.username ?? m.player_id}</div>
+        {messages.map((m) => {
+          const fromCurrent = m.player_id === currentPlayer.id;
+          // try to resolve username from players list first
+          const resolved = players.find((p) => p.id === m.player_id)?.username || m.players?.username || m.player_id;
+          return (
+          <div key={m.id} className={`p-2 rounded max-w-[80%] ${fromCurrent ? 'bg-blue-100 self-end ml-auto' : 'bg-gray-100'}`}>
+            <div className="text-sm font-semibold">{fromCurrent ? 'You' : resolved}</div>
             <div className="text-sm">{m.content}</div>
             <div className="text-xs text-gray-400 mt-1">{new Date(m.created_at).toLocaleTimeString()}</div>
           </div>

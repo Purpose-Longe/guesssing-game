@@ -6,6 +6,12 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "pg": "^8.16.3",
+    "dotenv": "^17.2.3"
+  }
+  ,
+  "scripts": {
+    "start": "node ./runMigrations.js && node ./index.js"
   }
 }
