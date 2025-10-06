@@ -10,7 +10,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve frontend build if it exists (single-container deployment)
 const distPath = path.join(__dirname, "..", "dist");
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
@@ -23,7 +22,7 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-const PORT = process.env.PORT || 3569;
+const PORT = process.env.PORT || 4000;
 
 // Postgres pool
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -74,8 +73,6 @@ async function ensureSchema() {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       code varchar(16) NOT NULL UNIQUE,
       game_master_id uuid NULL,
-      game_started_at timestamptz NULL,
-      game_ends_at timestamptz NULL,
       status text NOT NULL DEFAULT 'waiting',
       current_round_id uuid NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
@@ -190,21 +187,20 @@ app.post("/api/messages", async (req, res) => {
     return res.status(400).json({ error: "invalid player_id" });
   // simple duplicate guard: recent exact match (use proper INTERVAL syntax)
   const dup = await pool.query(
-    "SELECT * FROM messages WHERE session_id=$1 AND player_id=$2 AND content=$3 AND (now() - created_at) < INTERVAL '3 seconds' LIMIT 1",
+    "SELECT m.*, p.username FROM messages m LEFT JOIN players p ON p.id = m.player_id WHERE m.session_id=$1 AND m.player_id=$2 AND m.content=$3 AND (now() - m.created_at) < INTERVAL '3 seconds' LIMIT 1",
     [session_id, player_id, content]
   );
   if (dup.rows[0]) {
     const r = dup.rows[0];
-    // try to fetch username for nicer payload
-    const u = await pool.query('SELECT username FROM players WHERE id=$1', [r.player_id]);
     const outDup = {
       id: r.id,
       session_id: r.session_id,
       player_id: r.player_id,
       content: r.content,
       created_at: r.created_at,
-      players: u.rows[0] ? { username: u.rows[0].username } : undefined,
     };
+    // attach username when available so clients don't show UUIDs temporarily
+    if (r.username) outDup.players = { username: r.username };
     sendEvent(`messages-session-${session_id}`, "message", outDup);
     return res.json(outDup);
   }
@@ -214,9 +210,20 @@ app.post("/api/messages", async (req, res) => {
     [session_id, player_id, content, now]
   );
   const row = insert.rows[0];
-  // attach username if available
-  const u2 = await pool.query('SELECT username FROM players WHERE id=$1', [row.player_id]);
-  const out = { ...row, players: u2.rows[0] ? { username: u2.rows[0].username } : undefined };
+  // fetch the inserted message joined with player username in a single follow-up query
+  const joined = await pool.query(
+    "SELECT m.id, m.session_id, m.player_id, m.content, m.created_at, p.username FROM messages m LEFT JOIN players p ON p.id = m.player_id WHERE m.id=$1 LIMIT 1",
+    [row.id]
+  );
+  const jr = joined.rows[0];
+  const out = {
+    id: jr.id,
+    session_id: jr.session_id,
+    player_id: jr.player_id,
+    content: jr.content,
+    created_at: jr.created_at,
+    players: jr.username ? { username: jr.username } : undefined,
+  };
   sendEvent(`messages-session-${session_id}`, "message", out);
   res.json(out);
 });
@@ -300,11 +307,18 @@ app.post("/api/submit_guess", async (req, res) => {
         "UPDATE rounds SET winner_player_id=$1, ended_at=now() WHERE id=$2",
         [player_id, round.id]
       );
+      // make the correct guesser the next game master and end the round
       await client.query(
         "UPDATE sessions SET status=$1, current_round_id=$2, game_master_id=$3, updated_at=now() WHERE id=$4",
         ["waiting", null, player_id, session_id]
       );
       game_over = true;
+    }
+    // if the game is over, fetch the updated session inside the transaction to avoid races
+    let sessionUpdatedRow = null;
+    if (game_over) {
+      const sel = await client.query("SELECT * FROM sessions WHERE id=$1", [session_id]);
+      sessionUpdatedRow = sel.rows[0];
     }
 
     await client.query("COMMIT");
@@ -312,17 +326,8 @@ app.post("/api/submit_guess", async (req, res) => {
     // broadcast attempt
     sendEvent(`game-session-${session_id}`, "attempt_insert", attemptRow);
 
-    if (game_over) {
-      // broadcast session update
-      const sessionUpdated = await pool.query(
-        "SELECT * FROM sessions WHERE id=$1",
-        [session_id]
-      );
-      sendEvent(
-        `session-${session_id}`,
-        "session_update",
-        sessionUpdated.rows[0]
-      );
+    if (game_over && sessionUpdatedRow) {
+      sendEvent(`session-${session_id}`, "session_update", sessionUpdatedRow);
     }
 
     res.json({
@@ -369,31 +374,28 @@ app.post("/api/end_round", async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    // mark round ended and optionally award points
     await client.query(
-      "UPDATE sessions SET status=$1, current_round_id=$2, game_ends_at=$3, updated_at=now() WHERE id=$4",
-      ["ended", null, null, session_id]
+      "UPDATE sessions SET status=$1, current_round_id=$2, updated_at=now() WHERE id=$3",
+      ["ended", null, session_id]
     );
     if (winner_id) {
       await client.query("UPDATE players SET score = score + 10 WHERE id=$1", [
         winner_id,
       ]);
-      // transfer game master to winner
+      // transfer game master to the winner when ending the round
       await client.query(
-        "UPDATE sessions SET game_master_id=$1, updated_at=now() WHERE id=$2",
+        "UPDATE sessions SET game_master_id=$1 WHERE id=$2",
         [winner_id, session_id]
       );
     }
+
+    // fetch updated session inside transaction
+    const sel = await client.query("SELECT * FROM sessions WHERE id=$1", [session_id]);
+    const sessionUpdatedRow = sel.rows[0];
+
     await client.query("COMMIT");
-    const sessionUpdated = await pool.query(
-      "SELECT * FROM sessions WHERE id=$1",
-      [session_id]
-    );
-    sendEvent(
-      `session-${session_id}`,
-      "session_update",
-      sessionUpdated.rows[0]
-    );
+
+    sendEvent(`session-${session_id}`, "session_update", sessionUpdatedRow);
     res.json({ ok: true });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -463,6 +465,11 @@ app.put("/api/sessions/:id", async (req, res) => {
       id,
     ]);
     const updated = rows[0];
+    // include current question/answer and timing info in the session payload so clients see the question
+    if (body.current_question) updated.current_question = body.current_question;
+    if (body.current_answer) updated.current_answer = body.current_answer;
+    if (body.game_started_at) updated.game_started_at = body.game_started_at;
+    if (body.game_ends_at) updated.game_ends_at = body.game_ends_at;
     sendEvent(`session-${id}`, "session_update", updated);
     return res.json(updated);
   }

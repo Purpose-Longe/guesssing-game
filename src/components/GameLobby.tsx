@@ -50,7 +50,7 @@ export function GameLobby({ session, currentPlayer, players, onStartGame, onLeav
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center p-4">
-  <div className="bg-white rounded-lg shadow-2xl p-8 max-w-4xl w-full grid grid-cols-2 gap-6">
+  <div className="bg-white rounded-lg shadow-2xl p-8 max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800">Game Lobby</h2>
           <button
