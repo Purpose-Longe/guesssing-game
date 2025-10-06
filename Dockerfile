@@ -10,6 +10,8 @@ RUN npm ci --silent || npm install --silent
 # Copy source
 COPY . .
 # Build frontend
+ARG VITE_SERVER_URL
+ENV VITE_SERVER_URL=${VITE_SERVER_URL}
 RUN npm run build --silent
 
 # --- Production image ---
@@ -23,7 +25,6 @@ RUN npm ci --only=production --silent || npm install --only=production --silent
 COPY --from=builder /app/dist ./dist
 # Copy server code
 COPY server ./server
-COPY .env .env
 # Expose port
 EXPOSE 4000
 # Start server
