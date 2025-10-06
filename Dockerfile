@@ -18,6 +18,7 @@ RUN npm run build --silent
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=80
 # Copy node modules needed for server runtime
 COPY package.json package-lock.json* ./
 RUN npm ci --only=production --silent || npm install --only=production --silent
@@ -26,6 +27,6 @@ COPY --from=builder /app/dist ./dist
 # Copy server code
 COPY server ./server
 # Expose port
-EXPOSE 4000
+EXPOSE 80
 # Start server
 CMD ["node", "server/index.js"]
