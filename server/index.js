@@ -22,7 +22,7 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3569;
 
 // Postgres pool
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
