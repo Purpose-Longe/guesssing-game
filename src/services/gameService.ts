@@ -1,4 +1,4 @@
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ;
 
 export interface Player {
   id: string;
