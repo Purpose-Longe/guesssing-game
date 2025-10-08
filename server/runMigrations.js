@@ -1,12 +1,11 @@
 require('dotenv').config();
-const { Pool } = require('pg');
+const { pool } = require('./db');
 const fs = require('fs');
 const path = require('path');
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'db', 'migrations');
 
 async function run() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
     const client = await pool.connect();
     try {
@@ -45,7 +44,7 @@ async function run() {
       client.release();
     }
   } finally {
-    await pool.end();
+    // don't end shared pool here - leave lifecycle to server process
   }
 }
 

@@ -19,6 +19,8 @@ export function useGameSession() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [attempts, setAttempts] = useState<GameAttempt[]>([]);
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
+  // server-client skew in ms (serverTime - clientTimeAtReceipt)
+  const [serverSkewMs, setServerSkewMs] = useState<number | null>(null);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -68,7 +70,15 @@ export function useGameSession() {
 
     try {
       setError('');
-      await submitGuess(session.id, currentPlayer.id, guess);
+      const resp = await submitGuess(session.id, currentPlayer.id, guess);
+      // If server returned the created attempt, optimistically add it so UI feels snappy.
+      if (resp.attempt) {
+        setAttempts(prev => {
+          // avoid duplicates
+          if (prev.some(a => a.id === resp.attempt.id)) return prev;
+          return [...prev, resp.attempt];
+        });
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to submit guess');
     }
@@ -122,15 +132,33 @@ export function useGameSession() {
     const unsub1 = subscribeToChannel(`session-${session.id}`, (d: unknown) => {
       if (d && typeof d === 'object' && 'type' in d) {
         const dd = d as SSEPayload;
-        if (dd.type === 'session_update') setSession(dd.payload as GameSession);
-        if (dd.type === 'player_join' || dd.type === 'session_update') loadPlayers();
+        if (dd.type === 'session_update') {
+          const payload = dd.payload as GameSession & { server_now?: string };
+          // compute skew = serverNow - clientNowAtReceipt and store for live countdown
+          if (payload.server_now) {
+            const serverNowMs = new Date(payload.server_now).getTime();
+            const clientNowMs = Date.now();
+            setServerSkewMs(serverNowMs - clientNowMs);
+          }
+          setSession(prev => ({ ...(payload), server_now: payload.server_now || prev?.server_now || null } as GameSession));
+        }
+        if (dd.type === 'player_join' || dd.type === 'player_update' || dd.type === 'player_leave' || dd.type === 'session_update') {
+          // reload players list on any player-related events or when session updates
+          loadPlayers();
+        }
       }
     });
 
     const unsub2 = subscribeToChannel(`game-session-${session.id}`, (d: unknown) => {
       if (d && typeof d === 'object' && 'type' in d) {
         const dd = d as SSEPayload;
-        if (dd.type === 'attempt_insert') setAttempts(prev => [...prev, dd.payload as GameAttempt]);
+        if (dd.type === 'attempt_insert') {
+          const attempt = dd.payload as GameAttempt;
+          setAttempts(prev => {
+            if (prev.some(a => a.id === attempt.id)) return prev;
+            return [...prev, attempt];
+          });
+        }
       }
     });
 
@@ -166,11 +194,23 @@ export function useGameSession() {
       return;
     }
 
+    // Use server-client skew when provided to avoid relying on clients' clocks.
     const calculateTimeRemaining = () => {
-      const now = new Date().getTime();
       const endsAt = new Date(session.game_ends_at!).getTime();
-      const remaining = Math.ceil((endsAt - now) / 1000);
-      return Math.max(0, remaining);
+      if (serverSkewMs !== null) {
+        const serverNowEstimate = Date.now() + serverSkewMs;
+        const remaining = Math.ceil((endsAt - serverNowEstimate) / 1000);
+        return Math.max(0, remaining);
+      }
+      // fallback: use server_now embedded in session if present (best-effort)
+      if (session.server_now) {
+        const serverNow = new Date(session.server_now).getTime();
+        const remaining = Math.ceil((endsAt - serverNow) / 1000);
+        return Math.max(0, remaining);
+      }
+      // no server reference: best-effort local countdown
+      const remainingLocal = Math.ceil((endsAt - Date.now()) / 1000);
+      return Math.max(0, remainingLocal);
     };
 
     setTimeRemaining(calculateTimeRemaining());
