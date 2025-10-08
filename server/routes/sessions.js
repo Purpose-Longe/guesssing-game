@@ -44,17 +44,14 @@ module.exports = function makeSessionsRouter({ pool, sseManager, utils }) {
       }
 
       const durationSeconds = typeof body.duration === 'number' && body.duration > 0 ? body.duration : 60;
-      const insert = await pool.query('INSERT INTO rounds (session_id, question, answer_normalized, started_at, ends_at) VALUES ($1,$2,$3,now(),now() + ($4)::interval) RETURNING id, started_at, ends_at', [id, body.current_question, body.current_answer, `${durationSeconds} seconds`]);
-      const roundId = insert.rows[0].id;
-      const startedAt = insert.rows[0].started_at;
-      const endsAt = insert.rows[0].ends_at;
-      await pool.query('UPDATE sessions SET status=$1, current_round_id=$2, updated_at=now() WHERE id=$3', ['in_progress', roundId, id]);
-      const sessRes = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
-      const updated = sessRes.rows[0];
-      updated.current_question = body.current_question;
-      updated.current_answer = body.current_answer;
-      updated.game_started_at = startedAt;
-      updated.game_ends_at = endsAt;
+  const insert = await pool.query('INSERT INTO rounds (session_id, question, answer_normalized, started_at, ends_at) VALUES ($1,$2,$3,now(),now() + ($4)::interval) RETURNING id, started_at, ends_at', [id, body.current_question, body.current_answer, `${durationSeconds} seconds`]);
+  const roundId = insert.rows[0].id;
+  const startedAt = insert.rows[0].started_at;
+  const endsAt = insert.rows[0].ends_at;
+  // persist current question/answer and game times to sessions so subsequent reads include them
+  await pool.query('UPDATE sessions SET status=$1, current_round_id=$2, current_question=$3, current_answer=$4, game_started_at=$5, game_ends_at=$6, updated_at=now() WHERE id=$7', ['in_progress', roundId, body.current_question, body.current_answer, startedAt, endsAt, id]);
+  const sessRes = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
+  const updated = sessRes.rows[0];
       sseManager.broadcast(`session-${id}`, 'session_update', updated);
       return sendJson(res, updated);
     }

@@ -21,6 +21,7 @@ module.exports = function makeAttemptsRouter({ pool, sseManager, utils }) {
       sseManager.broadcast(`game-session-${session_id}`, 'attempt_insert', attemptRow);
 
       if (game_over && sessionUpdatedRow) {
+        console.info('broadcasting session_update for session %s: game_master_id=%s, status=%s', session_id, sessionUpdatedRow.game_master_id, sessionUpdatedRow.status);
         sseManager.broadcast(`session-${session_id}`, 'session_update', sessionUpdatedRow);
       }
 

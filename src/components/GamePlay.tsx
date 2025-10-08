@@ -28,7 +28,11 @@ export function GamePlay({
   const hasWon = myAttempts.some(a => a.is_correct);
   const winningAttempt = attempts.find(a => a.is_correct);
   const winner = winningAttempt ? players.find(p => p.id === winningAttempt.player_id) : null;
-  const gameOver = timeRemaining <= 0 || !!winner;
+  // Consider the game over only when there's a known winner (from attempts)
+  // or the server explicitly set the session status to 'ended'.
+  // Avoid relying solely on the client's local countdown (timeRemaining) to
+  // prevent premature victory screens due to clock skew or delayed SSE.
+  const gameOver = !!winner || session.status === 'ended';
   const isGameMaster = currentPlayer.id === session.game_master_id;
 
   useEffect(() => {

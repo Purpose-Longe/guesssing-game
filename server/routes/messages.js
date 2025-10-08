@@ -7,10 +7,8 @@ module.exports = function makeMessagesRouter({ pool, sseManager, utils }) {
   // GET messages for a session (joins player username)
   router.get('/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
-    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
-    const before = req.query.before ? String(req.query.before) : undefined;
     const messagesRepo = require('../repos/messagesRepo');
-    const { messages, hasMore } = await messagesRepo.getMessagesForSession(pool, sessionId, { limit, before });
+    const { messages } = await messagesRepo.getMessagesForSession(pool, sessionId);
     const out = messages.map((r) => ({
       id: r.id,
       session_id: r.session_id,
@@ -19,7 +17,7 @@ module.exports = function makeMessagesRouter({ pool, sseManager, utils }) {
       created_at: r.created_at,
       players: r.username ? { username: r.username } : undefined,
     }));
-    sendJson(res, { messages: out, hasMore });
+    sendJson(res, { messages: out });
   });
 
   // POST new message

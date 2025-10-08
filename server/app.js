@@ -75,3 +75,47 @@ function createApp() {
 }
 
 module.exports = { createApp };
+
+// Optional: scheduled housekeeping tasks. We purposefully place this here so
+// the app can schedule background jobs when the server process starts.
+// Controlled by environment variables to avoid surprising behavior in tests.
+if (require.main === module || process.env.ENABLE_AUTOMATIC_CLEANUP || process.env.ENABLE_PLAYER_HEARTBEAT_SWEEP) {
+  // Try to wire up cleanup and heartbeat sweep if requested.
+  try {
+    const { pool } = require('./db');
+    const { cleanupStaleSessions } = require('./services/cleanup');
+
+    const CLEANUP_INTERVAL_MINUTES = parseInt(process.env.CLEANUP_INTERVAL_MINUTES || '10', 10);
+    const CLEANUP_THRESHOLD_MINUTES = parseInt(process.env.CLEANUP_THRESHOLD_MINUTES || '60', 10);
+
+    if (process.env.ENABLE_AUTOMATIC_CLEANUP === '1' || process.env.ENABLE_AUTOMATIC_CLEANUP === 'true') {
+      console.info('Automatic cleanup enabled: running every %d minutes (threshold %d)', CLEANUP_INTERVAL_MINUTES, CLEANUP_THRESHOLD_MINUTES);
+      setInterval(async () => {
+        try {
+          const deleted = await cleanupStaleSessions(pool, { threshold: CLEANUP_THRESHOLD_MINUTES });
+          if (deleted && deleted.length > 0) console.info('Automatic cleanup removed %d sessions', deleted.length);
+        } catch (err) {
+          console.error('Automatic cleanup failed', err);
+        }
+      }, Math.max(1, CLEANUP_INTERVAL_MINUTES) * 60 * 1000);
+    }
+
+    // Player heartbeat sweep: mark players inactive if last_seen older than threshold
+    if (process.env.ENABLE_PLAYER_HEARTBEAT_SWEEP === '1' || process.env.ENABLE_PLAYER_HEARTBEAT_SWEEP === 'true') {
+      console.info('Player heartbeat sweep enabled: marking players inactive if last_seen older than %d minutes', CLEANUP_THRESHOLD_MINUTES);
+      setInterval(async () => {
+        try {
+          const res = await pool.query(
+            `UPDATE players SET is_active = false, updated_at = now() WHERE is_active = true AND (last_seen IS NULL OR last_seen < (now() - ($1 || '0 minutes')::interval)) RETURNING id, session_id`,
+            [`${CLEANUP_THRESHOLD_MINUTES} minutes`]
+          );
+          if (res && res.rowCount > 0) console.info('Marked %d players inactive due to heartbeat timeout', res.rowCount);
+        } catch (err) {
+          console.error('Player heartbeat sweep failed', err);
+        }
+      }, Math.max(1, CLEANUP_INTERVAL_MINUTES) * 60 * 1000);
+    }
+  } catch (err) {
+    console.warn('Failed to initialize scheduled housekeeping tasks', err && err.message);
+  }
+}

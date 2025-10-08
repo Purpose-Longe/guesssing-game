@@ -8,7 +8,7 @@ async function listActivePlayers(db, sessionId) {
 
 async function createPlayer(db, id, sessionId, username) {
   const { rows } = await db.query(
-    'INSERT INTO players (id, session_id, username, score, is_active, joined_at, updated_at) VALUES ($1,$2,$3,0,true,now(),now()) RETURNING id, session_id, username, score, is_active, joined_at, updated_at',
+    'INSERT INTO players (id, session_id, username, score, is_active, joined_at, updated_at, last_seen) VALUES ($1,$2,$3,0,true,now(),now(), now()) RETURNING id, session_id, username, score, is_active, joined_at, updated_at, last_seen',
     [id, sessionId, username]
   );
   return rows[0];

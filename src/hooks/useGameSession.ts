@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { subscribeToChannel } from '../lib/realtime';
+import { subscribeToChannel, fetchJson } from '../lib/realtime';
 import type { GameSession, Player, GameAttempt } from '../services/gameService';
 import {
   createGameSession,
@@ -164,6 +164,25 @@ export function useGameSession() {
 
     return () => { unsub1(); unsub2(); };
   }, [session, loadPlayers]);
+
+  // send periodic heartbeat to mark player as active and update last_seen
+  useEffect(() => {
+    if (!currentPlayer) return;
+  const HEARTBEAT_INTERVAL_MS = parseInt((import.meta.env.VITE_HEARTBEAT_MS as string) || '25000', 10);
+    let stopped = false;
+    const doHeartbeat = async () => {
+      try {
+        await fetchJson(`${(import.meta.env.VITE_SERVER_URL || '').replace(/\/$/, '') || ''}/api/players/${currentPlayer.id}/heartbeat`, { method: 'POST' });
+      } catch (err) {
+        // ignore heartbeat failures; it will retry on next interval
+        console.debug('heartbeat failed', err);
+      }
+    };
+    // initial fire
+    doHeartbeat();
+    const id = setInterval(() => { if (!stopped) doHeartbeat(); }, Math.max(5000, HEARTBEAT_INTERVAL_MS));
+    return () => { stopped = true; clearInterval(id); };
+  }, [currentPlayer]);
 
   // rehydrate from localStorage on mount
   useEffect(() => {

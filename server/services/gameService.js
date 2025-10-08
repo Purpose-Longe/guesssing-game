@@ -39,8 +39,24 @@ async function submitGuess(pool, { session_id, player_id, guess }) {
       await client.query('UPDATE players SET score = score + 10 WHERE id=$1', [player_id]);
       await roundsRepo.setRoundWinner(client, round.id, player_id);
       await sessionsRepo.updateAfterWin(client, session_id, player_id);
+      // fetch the updated session row
       const sel = await sessionsRepo.getSessionById(client, session_id);
       sessionUpdatedRow = sel;
+
+      // also include round details (question/answer/timestamps) so callers can broadcast them
+      try {
+        const rdet = await client.query('SELECT id, question, answer_normalized, started_at, ends_at FROM rounds WHERE id=$1', [round.id]);
+        if (rdet.rowCount > 0) {
+          const rd = rdet.rows[0];
+          sessionUpdatedRow.current_question = rd.question;
+          sessionUpdatedRow.current_answer = rd.answer_normalized;
+          sessionUpdatedRow.game_started_at = rd.started_at;
+          sessionUpdatedRow.game_ends_at = rd.ends_at;
+        }
+      } catch (e) {
+        // non-fatal: if we can't fetch round details, continue without them
+        console.error('failed to fetch round details for broadcast', e);
+      }
       game_over = true;
     }
 

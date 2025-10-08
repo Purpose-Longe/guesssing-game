@@ -54,5 +54,21 @@ module.exports = function makePlayersRouter({ pool, sseManager, utils }) {
     sendJson(res, existing);
   });
 
+  // heartbeat: mark player as active and update last_seen
+  router.post('/:id/heartbeat', async (req, res) => {
+    const id = req.params.id;
+    try {
+      await pool.query('UPDATE players SET is_active = true, last_seen = now(), updated_at = now() WHERE id=$1', [id]);
+      const p = await playersRepo.getPlayerById(pool, id);
+      // broadcast player update so other clients see activity
+      if (p && p.session_id) sseManager.broadcast(`session-${p.session_id}`, 'player_update', p);
+      return sendJson(res, p);
+    } catch (err) {
+      console.error('heartbeat failed', err);
+      res.status(500);
+      return sendJson(res, { error: 'internal error' });
+    }
+  });
+
   return router;
 };
